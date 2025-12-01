@@ -1,0 +1,39 @@
+# Exchange API
+ccxt==4.2.25
+
+# Data Processing
+pandas==2.1.4
+numpy==1.26.3
+
+# Database
+sqlalchemy==2.0.25
+
+# Web Framework
+flask==3.0.0
+flask-cors==4.0.0
+
+# Charting
+plotly==5.18.0
+
+# Configuration
+pyyaml==6.0.1
+python-dotenv==1.0.0
+
+# Notifications
+smtplib  # Built-in
+email-validator==2.1.0
+
+# Utilities
+python-dateutil==2.8.2
+pytz==2023.3
+
+# Logging
+colorlog==6.8.0
+
+# Testing
+pytest==7.4.3
+pytest-cov==4.1.0
+
+# Development
+black==23.12.1
+flake8==7.0.0

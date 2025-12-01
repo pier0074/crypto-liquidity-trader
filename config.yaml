@@ -1,0 +1,116 @@
+# Exchange Configuration
+exchange:
+  name: kucoin
+  api_key: ""  # Optional for public data
+  api_secret: ""
+  password: ""  # KuCoin requires password
+
+# Trading Pairs (Top liquid crypto pairs)
+trading_pairs:
+  - BTC/USDT
+  - ETH/USDT
+  - BNB/USDT
+  - XRP/USDT
+  - ADA/USDT
+  - DOGE/USDT
+  - SOL/USDT
+  - TRX/USDT
+  - DOT/USDT
+  - MATIC/USDT
+  - LTC/USDT
+  - SHIB/USDT
+  - AVAX/USDT
+  - UNI/USDT
+  - LINK/USDT
+  - ATOM/USDT
+  - XLM/USDT
+  - ETC/USDT
+  - FIL/USDT
+  - APT/USDT
+
+# Timeframes to analyze
+timeframes:
+  - 1m
+  - 5m
+  - 15m
+  - 1h
+  - 4h
+  - 1d
+
+# Database
+database:
+  type: sqlite
+  path: ./trading_data.db
+  # For PostgreSQL (future):
+  # type: postgresql
+  # host: localhost
+  # port: 5432
+  # database: crypto_trader
+  # user: your_user
+  # password: your_password
+
+# Pattern Detection Settings
+patterns:
+  fair_value_gap:
+    enabled: true
+    min_gap_percentage: 0.1  # Minimum gap size as % of price
+    lookback_candles: 100  # How many candles to analyze
+
+  liquidity_sweep:
+    enabled: false  # Coming soon
+
+  order_block:
+    enabled: false  # Coming soon
+
+# Signal Generation
+signals:
+  min_risk_reward: 2.0  # Minimum R/R ratio to generate signal
+  stop_loss_atr_multiplier: 1.5  # Stop loss based on ATR
+  take_profit_levels: [2, 3, 4]  # Multiple TP levels (R/R ratios)
+
+# Risk Management
+risk_management:
+  max_risk_per_trade_percent: 1.0  # % of account to risk per trade
+  max_daily_trades: 10
+  max_concurrent_trades: 3
+  account_size: 10000  # USD
+
+# Notifications
+notifications:
+  email:
+    enabled: true
+    smtp_server: smtp.gmail.com
+    smtp_port: 587
+    sender_email: your_email@gmail.com
+    sender_password: your_app_password  # Use app password for Gmail
+    recipient_email: your_email@gmail.com
+
+  telegram:
+    enabled: false  # Future feature
+    bot_token: ""
+    chat_id: ""
+
+# Backtesting
+backtesting:
+  initial_capital: 10000
+  commission_percent: 0.1
+  slippage_percent: 0.05
+  start_date: "2023-01-01"
+  end_date: "2024-12-01"
+
+# Scanner Settings
+scanner:
+  scan_interval_seconds: 60  # How often to scan for new opportunities
+  min_volume_24h: 1000000  # Minimum 24h volume in USD
+
+# Web Dashboard
+web:
+  host: 127.0.0.1
+  port: 5000
+  debug: true
+
+# Logging
+logging:
+  level: INFO  # DEBUG, INFO, WARNING, ERROR
+  file: ./logs/trader.log
+  console: true
