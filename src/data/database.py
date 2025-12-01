@@ -353,6 +353,53 @@ class Database:
         finally:
             session.close()
 
+    def get_last_ohlcv_timestamp(self, symbol, timeframe):
+        """
+        Get the last (most recent) timestamp for a symbol/timeframe in the database
+
+        Args:
+            symbol: Trading pair symbol
+            timeframe: Timeframe string
+
+        Returns:
+            datetime object of last timestamp, or None if no data exists
+        """
+        session = self.get_session()
+        try:
+            last_record = session.query(OHLCV)\
+                .filter(OHLCV.symbol == symbol, OHLCV.timeframe == timeframe)\
+                .order_by(OHLCV.timestamp.desc())\
+                .first()
+
+            if last_record:
+                logger.debug(f"Last saved timestamp for {symbol} {timeframe}: {last_record.timestamp}")
+                return last_record.timestamp
+            else:
+                logger.debug(f"No existing data for {symbol} {timeframe}")
+                return None
+        finally:
+            session.close()
+
+    def get_ohlcv_count(self, symbol, timeframe):
+        """
+        Get count of OHLCV records for a symbol/timeframe
+
+        Args:
+            symbol: Trading pair symbol
+            timeframe: Timeframe string
+
+        Returns:
+            Number of records
+        """
+        session = self.get_session()
+        try:
+            count = session.query(OHLCV)\
+                .filter(OHLCV.symbol == symbol, OHLCV.timeframe == timeframe)\
+                .count()
+            return count
+        finally:
+            session.close()
+
 
 # Convenience function to initialize database
 def init_database(config):

@@ -74,25 +74,40 @@ def main():
         logger.info(f"\n[{i}/{len(trading_pairs)}] Processing {symbol}")
 
         try:
-            # Fetch 1-minute data first
+            # Fetch 1-minute data with incremental saving and resume capability
             logger.info(f"Fetching 1m data for {symbol}...")
             ohlcv_1m = collector.fetch_ohlcv_range(
                 symbol,
                 "1m",
                 start_date,
-                end_date
+                end_date,
+                db=db,  # Enable incremental saving
+                save_frequency=10  # Save every 10 requests (~10,000 candles)
             )
 
-            if not ohlcv_1m:
-                logger.warning(f"No data fetched for {symbol}")
-                continue
+            if not ohlcv_1m or len(ohlcv_1m) == 0:
+                # Check if data already exists
+                existing_count = db.get_ohlcv_count(symbol, "1m")
+                if existing_count > 0:
+                    logger.info(f"Loading {existing_count:,} existing candles from DB for aggregation...")
+                    # Load from database for aggregation
+                    ohlcv_from_db = db.get_ohlcv(symbol, "1m", start_date, end_date)
+                    if ohlcv_from_db:
+                        # Convert DB objects to list format
+                        ohlcv_1m = [[
+                            int(candle.timestamp.timestamp() * 1000),
+                            candle.open,
+                            candle.high,
+                            candle.low,
+                            candle.close,
+                            candle.volume
+                        ] for candle in ohlcv_from_db]
+                else:
+                    logger.warning(f"No data available for {symbol}")
+                    continue
 
             # Convert to DataFrame for aggregation
             df_1m = collector.ohlcv_to_dataframe(ohlcv_1m)
-
-            # Save 1m data
-            if "1m" in timeframes:
-                collector.save_to_database(db, symbol, "1m", ohlcv_1m)
 
             # Aggregate to other timeframes
             for timeframe in timeframes:
@@ -109,6 +124,10 @@ def main():
                 except Exception as e:
                     logger.error(f"Error aggregating {symbol} to {timeframe}: {e}")
 
+        except KeyboardInterrupt:
+            logger.info("\n⚠️  Interrupted by user. Progress has been saved to database.")
+            logger.info("You can safely restart this script - it will resume from where it left off.")
+            raise
         except Exception as e:
             logger.error(f"Error processing {symbol}: {e}")
             continue

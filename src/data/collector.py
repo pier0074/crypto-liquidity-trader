@@ -61,34 +61,54 @@ class DataCollector:
             logger.error(f"Error fetching OHLCV for {symbol} {timeframe}: {e}")
             raise
 
-    def fetch_ohlcv_range(self, symbol, timeframe, start_date, end_date=None):
+    def fetch_ohlcv_range(self, symbol, timeframe, start_date, end_date=None, db=None, save_frequency=10):
         """
-        Fetch OHLCV data for a date range by making multiple requests
+        Fetch OHLCV data for a date range with incremental saving and resume capability
 
         Args:
             symbol: Trading pair (e.g., 'BTC/USDT')
             timeframe: Timeframe string (e.g., '1m', '5m', '1h')
             start_date: Start datetime
             end_date: End datetime (default: now)
+            db: Database instance for incremental saving (optional)
+            save_frequency: Save to DB every N requests (default: 10 = ~10,000 candles)
 
         Returns:
-            List of OHLCV data
+            List of OHLCV data (all fetched, including previously saved)
         """
         if end_date is None:
             end_date = datetime.utcnow()
 
+        # Check if we have existing data and should resume
+        resume_from = start_date
+        existing_count = 0
+
+        if db:
+            last_timestamp = db.get_last_ohlcv_timestamp(symbol, timeframe)
+            if last_timestamp:
+                existing_count = db.get_ohlcv_count(symbol, timeframe)
+                # Resume from 1 minute after last saved timestamp to avoid duplicates
+                resume_from = last_timestamp + timedelta(minutes=1)
+                if resume_from >= end_date:
+                    logger.info(f"✓ {symbol} {timeframe} already up to date ({existing_count:,} candles)")
+                    return []
+                logger.info(f"⟳ Resuming from {resume_from.strftime('%Y-%m-%d %H:%M')} (existing: {existing_count:,} candles)")
+
         all_ohlcv = []
-        current_time = int(start_date.timestamp() * 1000)
+        buffer = []  # Buffer for incremental saves
+        current_time = int(resume_from.timestamp() * 1000)
         end_time = int(end_date.timestamp() * 1000)
-        total_duration = end_time - current_time
+        original_start_time = int(start_date.timestamp() * 1000)
+        total_duration = end_time - original_start_time
 
         # Determine appropriate limit based on timeframe to avoid too many requests
         limit = 1000  # Most exchanges support up to 1000 or 1500
 
-        logger.info(f"Fetching {symbol} {timeframe} from {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
+        logger.info(f"Fetching {symbol} {timeframe} from {resume_from.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
 
         request_count = 0
         last_log_time = time.time()
+        last_save_time = time.time()
 
         while current_time < end_time:
             try:
@@ -98,17 +118,26 @@ class DataCollector:
                     break
 
                 all_ohlcv.extend(ohlcv)
+                buffer.extend(ohlcv)
                 request_count += 1
 
                 # Update current_time to last candle timestamp + 1
                 current_time = ohlcv[-1][0] + 1
 
+                # Incremental save to database
+                if db and len(buffer) > 0 and (request_count % save_frequency == 0 or time.time() - last_save_time >= 30):
+                    self.save_to_database(db, symbol, timeframe, buffer)
+                    logger.debug(f"  💾 Saved {len(buffer):,} candles to DB")
+                    buffer = []
+                    last_save_time = time.time()
+
                 # Calculate and log progress every 2 seconds
                 current_time_elapsed = time.time()
                 if current_time_elapsed - last_log_time >= 2.0:
-                    progress_pct = ((current_time - int(start_date.timestamp() * 1000)) / total_duration) * 100
+                    progress_pct = ((current_time - original_start_time) / total_duration) * 100
                     current_date = datetime.fromtimestamp(current_time / 1000)
-                    logger.info(f"  Progress: {progress_pct:.1f}% | {len(all_ohlcv):,} candles | Up to {current_date.strftime('%Y-%m-%d %H:%M')} | Requests: {request_count}")
+                    total_fetched = existing_count + len(all_ohlcv)
+                    logger.info(f"  Progress: {progress_pct:.1f}% | {total_fetched:,} total candles | Up to {current_date.strftime('%Y-%m-%d %H:%M')} | Requests: {request_count}")
                     last_log_time = current_time_elapsed
 
                 # Rate limiting
@@ -116,9 +145,19 @@ class DataCollector:
 
             except Exception as e:
                 logger.error(f"Error fetching data range: {e}")
+                # Save any remaining buffer before exiting
+                if db and len(buffer) > 0:
+                    logger.info(f"  💾 Saving {len(buffer):,} candles before crash...")
+                    self.save_to_database(db, symbol, timeframe, buffer)
                 break
 
-        logger.info(f"✓ Completed: {len(all_ohlcv):,} candles for {symbol} {timeframe} ({request_count} requests)")
+        # Save any remaining data in buffer
+        if db and len(buffer) > 0:
+            self.save_to_database(db, symbol, timeframe, buffer)
+            logger.debug(f"  💾 Saved final {len(buffer):,} candles to DB")
+
+        total_fetched = existing_count + len(all_ohlcv)
+        logger.info(f"✓ Completed: {total_fetched:,} total candles for {symbol} {timeframe} ({request_count} new requests)")
         return all_ohlcv
 
     def ohlcv_to_dataframe(self, ohlcv):
