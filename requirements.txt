@@ -2,8 +2,8 @@
 ccxt==4.2.25
 
 # Data Processing
-pandas==2.1.4
-numpy==1.26.3
+pandas>=2.2.0
+numpy>=1.26.4
 
 # Database
 sqlalchemy==2.0.25
@@ -20,7 +20,7 @@ pyyaml==6.0.1
 python-dotenv==1.0.0
 
 # Notifications
-smtplib  # Built-in
+# smtplib is built-in, no need to install
 email-validator==2.1.0
 
 # Utilities
