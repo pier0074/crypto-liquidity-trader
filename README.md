@@ -56,6 +56,27 @@ Edit `config.yaml` to set:
 - Risk management parameters
 - Pattern detection settings
 
+## Quick Start
+
+See [QUICKSTART.md](QUICKSTART.md) for detailed setup and usage instructions.
+
+### TL;DR
+
+```bash
+# 1. Install dependencies
+pip install -r requirements.txt
+
+# 2. Fetch historical data
+python scripts/fetch_historical.py
+
+# 3. Run scanner (generates signals and sends notifications)
+python scripts/run_scanner.py
+
+# 4. Start web dashboard
+python src/web/app.py
+# Open http://127.0.0.1:5000 in browser
+```
+
 ## Usage
 
 ### Fetch Historical Data
@@ -65,6 +86,10 @@ python scripts/fetch_historical.py
 
 ### Run Pattern Scanner
 ```bash
+# Single scan
+python scripts/run_scanner.py --once
+
+# Continuous scanning (recommended)
 python scripts/run_scanner.py
 ```
 
@@ -108,12 +133,12 @@ Detects areas where price moved rapidly with minimal trading, creating an imbala
 ## Roadmap
 
 - [x] Project setup and architecture
-- [ ] Data collection from KuCoin
-- [ ] Fair Value Gap detection
-- [ ] Signal generation with R/R
-- [ ] Email notifications
-- [ ] Backtesting engine
-- [ ] Web dashboard
+- [x] Data collection from KuCoin
+- [x] Fair Value Gap detection
+- [x] Signal generation with R/R
+- [x] Email notifications
+- [x] Backtesting engine
+- [x] Web dashboard
 - [ ] Additional patterns (Liquidity Sweeps, Order Blocks)
 - [ ] Automated trading via API
 
