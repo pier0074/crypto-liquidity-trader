@@ -43,8 +43,8 @@ config.local.yaml
 logs/
 *.log
 
-# Data
-data/
+# Data files (not source code)
+/data/
 historical_data/
 *.csv
 
