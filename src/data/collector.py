@@ -80,11 +80,15 @@ class DataCollector:
         all_ohlcv = []
         current_time = int(start_date.timestamp() * 1000)
         end_time = int(end_date.timestamp() * 1000)
+        total_duration = end_time - current_time
 
         # Determine appropriate limit based on timeframe to avoid too many requests
         limit = 1000  # Most exchanges support up to 1000 or 1500
 
-        logger.info(f"Fetching {symbol} {timeframe} from {start_date} to {end_date}")
+        logger.info(f"Fetching {symbol} {timeframe} from {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
+
+        request_count = 0
+        last_log_time = time.time()
 
         while current_time < end_time:
             try:
@@ -94,20 +98,27 @@ class DataCollector:
                     break
 
                 all_ohlcv.extend(ohlcv)
+                request_count += 1
 
                 # Update current_time to last candle timestamp + 1
                 current_time = ohlcv[-1][0] + 1
 
+                # Calculate and log progress every 2 seconds
+                current_time_elapsed = time.time()
+                if current_time_elapsed - last_log_time >= 2.0:
+                    progress_pct = ((current_time - int(start_date.timestamp() * 1000)) / total_duration) * 100
+                    current_date = datetime.fromtimestamp(current_time / 1000)
+                    logger.info(f"  Progress: {progress_pct:.1f}% | {len(all_ohlcv):,} candles | Up to {current_date.strftime('%Y-%m-%d %H:%M')} | Requests: {request_count}")
+                    last_log_time = current_time_elapsed
+
                 # Rate limiting
                 time.sleep(self.exchange.rateLimit / 1000)
-
-                logger.debug(f"Fetched up to {datetime.fromtimestamp(current_time / 1000)}")
 
             except Exception as e:
                 logger.error(f"Error fetching data range: {e}")
                 break
 
-        logger.info(f"Fetched total {len(all_ohlcv)} candles for {symbol} {timeframe}")
+        logger.info(f"✓ Completed: {len(all_ohlcv):,} candles for {symbol} {timeframe} ({request_count} requests)")
         return all_ohlcv
 
     def ohlcv_to_dataframe(self, ohlcv):

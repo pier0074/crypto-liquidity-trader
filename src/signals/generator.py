@@ -5,6 +5,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import logging
 from src.utils import calculate_position_size, calculate_risk_reward
+from src.utils.chart_analysis import calculate_dynamic_take_profits
 
 logger = logging.getLogger(__name__)
 
@@ -89,12 +90,6 @@ class SignalGenerator:
             # Stop loss below the gap
             stop_loss = gap_low - (atr * self.stop_loss_atr_multiplier)
 
-            # Take profit levels based on R/R ratios
-            risk = entry_price - stop_loss
-            take_profit_1 = entry_price + (risk * self.take_profit_levels[0])
-            take_profit_2 = entry_price + (risk * self.take_profit_levels[1]) if len(self.take_profit_levels) > 1 else None
-            take_profit_3 = entry_price + (risk * self.take_profit_levels[2]) if len(self.take_profit_levels) > 2 else None
-
             trade_direction = "long"
 
         else:  # bearish
@@ -104,16 +99,36 @@ class SignalGenerator:
             # Stop loss above the gap
             stop_loss = gap_high + (atr * self.stop_loss_atr_multiplier)
 
-            # Take profit levels based on R/R ratios
-            risk = stop_loss - entry_price
-            take_profit_1 = entry_price - (risk * self.take_profit_levels[0])
-            take_profit_2 = entry_price - (risk * self.take_profit_levels[1]) if len(self.take_profit_levels) > 1 else None
-            take_profit_3 = entry_price - (risk * self.take_profit_levels[2]) if len(self.take_profit_levels) > 2 else None
-
             trade_direction = "short"
 
-        # Calculate R/R ratio
-        rr_ratio = calculate_risk_reward(entry_price, stop_loss, take_profit_1)
+        # Calculate risk
+        risk = abs(entry_price - stop_loss)
+
+        # DYNAMIC TAKE PROFITS based on chart structure
+        logger.info(f"Calculating dynamic TPs for {symbol} {direction} FVG...")
+        tp_targets = calculate_dynamic_take_profits(
+            entry_price=entry_price,
+            stop_loss=stop_loss,
+            direction=trade_direction,
+            df=df,
+            max_levels=3
+        )
+
+        # Extract TP prices
+        take_profit_1 = tp_targets[0]['price'] if len(tp_targets) > 0 else None
+        take_profit_2 = tp_targets[1]['price'] if len(tp_targets) > 1 else None
+        take_profit_3 = tp_targets[2]['price'] if len(tp_targets) > 2 else None
+
+        # Store TP metadata for notifications
+        tp_types = [tp['type'] for tp in tp_targets]
+        tp_rr_ratios = [tp['rr_ratio'] for tp in tp_targets]
+
+        # Calculate R/R ratio (use first TP for minimum check)
+        if take_profit_1:
+            rr_ratio = calculate_risk_reward(entry_price, stop_loss, take_profit_1)
+        else:
+            logger.warning(f"No valid TP found for {symbol}, skipping signal")
+            return None
 
         # Only generate signal if R/R meets minimum
         if rr_ratio < self.min_risk_reward:
@@ -123,6 +138,18 @@ class SignalGenerator:
         # Calculate position size
         risk_amount = self.account_size * (self.max_risk_percent / 100)
         position_size = calculate_position_size(entry_price, stop_loss, risk_amount)
+
+        # Create notes with TP details
+        tp_notes = []
+        for i, (tp_price, tp_type, tp_rr) in enumerate(zip(
+            [take_profit_1, take_profit_2, take_profit_3],
+            tp_types + [None, None, None],
+            tp_rr_ratios + [None, None, None]
+        ), 1):
+            if tp_price and tp_type:
+                tp_notes.append(f"TP{i}: {tp_type} (R:R {tp_rr:.1f})")
+
+        notes = f"FVG {direction} - Gap: {gap_low:.8f} to {gap_high:.8f}\n" + ", ".join(tp_notes)
 
         # Create signal
         signal = {
@@ -141,10 +168,13 @@ class SignalGenerator:
             "status": "pending",
             "notified": False,
             "valid_until": datetime.utcnow() + timedelta(hours=24),  # Signal valid for 24h
-            "notes": f"FVG {direction} - Gap: {gap_low:.8f} to {gap_high:.8f}",
+            "notes": notes,
+            "tp_types": tp_types,  # Store TP types for reference
+            "tp_rr_ratios": tp_rr_ratios,  # Store individual R:R ratios
         }
 
         logger.info(f"Generated {trade_direction} signal for {symbol} @ {entry_price:.8f} (R/R: {rr_ratio:.2f})")
+        logger.info(f"  Dynamic TPs: {', '.join(tp_notes)}")
         return signal
 
     def _calculate_atr(self, df, period=14):
@@ -229,15 +259,27 @@ Direction: {signal['direction'].upper()}
 ENTRY: {signal['entry_price']:.8f}
 STOP LOSS: {signal['stop_loss']:.8f}
 
-TAKE PROFITS:
-  TP1: {signal['take_profit_1']:.8f} (R/R: {self.take_profit_levels[0]}:1)
+TAKE PROFITS (Dynamic - Based on Chart Structure):
 """
 
+        # Get TP types and R/R ratios if available
+        tp_types = signal.get('tp_types', [])
+        tp_rr_ratios = signal.get('tp_rr_ratios', [])
+
+        if signal.get('take_profit_1'):
+            tp1_type = tp_types[0] if len(tp_types) > 0 else 'target'
+            tp1_rr = tp_rr_ratios[0] if len(tp_rr_ratios) > 0 else signal['risk_reward_ratio']
+            message += f"  TP1: {signal['take_profit_1']:.8f} (R/R: {tp1_rr:.1f}:1) [{tp1_type}]\n"
+
         if signal.get('take_profit_2'):
-            message += f"  TP2: {signal['take_profit_2']:.8f} (R/R: {self.take_profit_levels[1]}:1)\n"
+            tp2_type = tp_types[1] if len(tp_types) > 1 else 'target'
+            tp2_rr = tp_rr_ratios[1] if len(tp_rr_ratios) > 1 else 0
+            message += f"  TP2: {signal['take_profit_2']:.8f} (R/R: {tp2_rr:.1f}:1) [{tp2_type}]\n"
 
         if signal.get('take_profit_3'):
-            message += f"  TP3: {signal['take_profit_3']:.8f} (R/R: {self.take_profit_levels[2]}:1)\n"
+            tp3_type = tp_types[2] if len(tp_types) > 2 else 'target'
+            tp3_rr = tp_rr_ratios[2] if len(tp_rr_ratios) > 2 else 0
+            message += f"  TP3: {signal['take_profit_3']:.8f} (R/R: {tp3_rr:.1f}:1) [{tp3_type}]\n"
 
         message += f"""
 Risk/Reward: {signal['risk_reward_ratio']:.2f}:1
